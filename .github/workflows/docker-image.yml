@@ -1,0 +1,59 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ master ]
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.set-images.outputs.images }}
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '2.x'
+    - id: set-images
+      run: echo "::set-output name=images::$(python -c 'import os, json; print json.dumps(os.listdir("images"))')"
+  build:
+    runs-on: ubuntu-latest
+    needs: [prepare]
+    env:
+      DOCKER_CLI_EXPERIMENTAL: enabled 
+    strategy:
+      matrix:
+        image: ${{fromJson(needs.prepare.outputs.images)}}
+    steps:
+      - uses: actions/checkout@v2
+      - id: get-version
+        name: "Get image version"
+        run: echo "::set-output name=version::$(cat images/${{matrix.image}}/VERSION)"
+      - uses: azure/docker-login@v1
+        with:
+          login-server: docker.pkg.github.com
+          username: gaetansnl
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: "Publish to docker.pkg.github.com"
+        run: |
+          repository_base="docker.pkg.github.com/gaetansnl/docker-images";
+          image_name="${{ matrix.image }}";
+          image_version="${{ steps.get-version.outputs.version }}";
+          full_image_name="$repository_base/$image_name:$image_version";
+          full_image_name_latest="$repository_base/$image_name:latest";
+          
+          echo "Checking for existing image $full_image_name...";
+          
+          # This test doesn't work....
+          if docker manifest inspect $full_image_name >/dev/null; then
+            echo "Image $image_name already exists";
+            exit 1;
+          fi
+          echo "Building $full_image_name...";
+          docker build -t $full_image_name ./images/$image_name;
+          docker tag $full_image_name $full_image_name_latest;
+          
+          echo "Pushing $full_image_name...";
+          docker push $full_image_name
+          
+          echo "Pushing $full_image_name_latest...";
+          docker push $full_image_name_latest
