@@ -1,4 +1,5 @@
 FROM n8nio/n8n:0.193.1-debian
+RUN npm install -g lodash
 RUN apt-get update \
     && apt-get install -y wget gnupg \
     && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
